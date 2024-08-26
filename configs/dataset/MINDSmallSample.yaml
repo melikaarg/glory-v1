@@ -1,0 +1,22 @@
+defaults:
+  - _self_
+  - default
+
+dataset_name: MINDSmallSample
+dataset_dir: ${path.data_dir}/MINDSmallSample
+dataset_lang: english
+
+train_len: 10
+val_len: 10
+test_len: 10
+
+pos_count: 10
+
+# Info
+news_num: 617
+word_num: 70974
+user_num: 10
+
+# train
+category_num: 17
+subcategory_num: 264
