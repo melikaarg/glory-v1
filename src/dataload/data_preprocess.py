@@ -131,11 +131,13 @@ def read_raw_news(cfg, file_path, mode='train'):
             # split one line
             split_line = line.strip('\n').split('\t')
             news_id, category, subcategory, title, abstract, url, t_entity_str, _ = split_line
+
             update_dict(target_dict=news_dict, key=news_id)
+            print(news_id)
 
             # Entity
             if t_entity_str:
-                entity_ids = [obj["WikidataId"] for obj in json.loads(t_entity_str)]
+                entity_ids = [obj["WikidataId"] for obj in json.loads(t_entity_str.replace('""', '"').strip('"'))]
                 [update_dict(target_dict=entity_dict, key=entity_id) for entity_id in entity_ids]
             else:
                 entity_ids = t_entity_str
@@ -430,28 +432,28 @@ def prepare_entity_graph(cfg, mode='train'):
 
 
 def prepare_preprocessed_data(cfg):
-    # prepare_distributed_data(cfg, "train")
-    # prepare_distributed_data(cfg, "val")
+    prepare_distributed_data(cfg, "train")
+    prepare_distributed_data(cfg, "val")
     prepare_distributed_data(cfg, "test")
     #
-    # prepare_preprocess_bin(cfg, "train")
-    # prepare_preprocess_bin(cfg, "val")
+    prepare_preprocess_bin(cfg, "train")
+    prepare_preprocess_bin(cfg, "val")
     prepare_preprocess_bin(cfg, "test")
     # #
-    # prepare_news_graph(cfg, 'train')
-    # prepare_news_graph(cfg, 'val')
+    prepare_news_graph(cfg, 'train')
+    prepare_news_graph(cfg, 'val')
     prepare_news_graph(cfg, 'test')
     # #
-    # prepare_neighbor_list(cfg, 'train', 'news')
-    # prepare_neighbor_list(cfg, 'val', 'news')
+    prepare_neighbor_list(cfg, 'train', 'news')
+    prepare_neighbor_list(cfg, 'val', 'news')
     prepare_neighbor_list(cfg, 'test', 'news')
     #
-    # prepare_entity_graph(cfg, 'train')
-    # prepare_entity_graph(cfg, 'val')
+    prepare_entity_graph(cfg, 'train')
+    prepare_entity_graph(cfg, 'val')
     prepare_entity_graph(cfg, 'test')
     #
-    # prepare_neighbor_list(cfg, 'train', 'entity')
-    # prepare_neighbor_list(cfg, 'val', 'entity')
+    prepare_neighbor_list(cfg, 'train', 'entity')
+    prepare_neighbor_list(cfg, 'val', 'entity')
     prepare_neighbor_list(cfg, 'test', 'entity')
     #
     # Entity vec process
