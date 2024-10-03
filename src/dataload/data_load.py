@@ -30,6 +30,7 @@ def load_data(cfg, mode='train', model=None, local_rank=0):
 
 
             news_neighbors_dict = pickle.load(open(Path(data_dir[mode]) / "news_neighbor_dict.bin", "rb"))
+            news_clusters_dict = pickle.load(open(Path(data_dir[mode]) / "news_clusters.bin", "rb"))
 
             if cfg.model.use_entity:
                 entity_neighbors = pickle.load(open(Path(data_dir[mode]) / "entity_neighbor_dict.bin", "rb"))
@@ -38,7 +39,7 @@ def load_data(cfg, mode='train', model=None, local_rank=0):
             else:
                 entity_neighbors = None
 
-            dataset = TrainGraphDataset(
+            dataset = TrainGraphDatasetWithClustering(
                 filename=target_file,
                 news_index=news_index,
                 news_input=news_input,
@@ -46,8 +47,20 @@ def load_data(cfg, mode='train', model=None, local_rank=0):
                 cfg=cfg,
                 neighbor_dict=news_neighbors_dict,
                 news_graph=news_graph,
-                entity_neighbors=entity_neighbors
+                entity_neighbors=entity_neighbors,
+                clusters=news_clusters_dict
             )
+
+            # dataset = TrainGraphDataset(
+            #     filename=target_file,
+            #     news_index=news_index,
+            #     news_input=news_input,
+            #     local_rank=local_rank,
+            #     cfg=cfg,
+            #     neighbor_dict=news_neighbors_dict,
+            #     news_graph=news_graph,
+            #     entity_neighbors=entity_neighbors,
+            # )
             dataloader = DataLoader(dataset, batch_size=None)
             
         else:

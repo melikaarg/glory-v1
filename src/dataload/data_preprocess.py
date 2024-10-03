@@ -2,7 +2,9 @@ import collections
 import os
 from pathlib import Path
 from nltk.tokenize import word_tokenize
+from sklearn.cluster import KMeans
 from torch_geometric.data import Data
+from torch_geometric.nn import Node2Vec
 from torch_geometric.utils import to_undirected
 
 import torch.nn.functional as F
@@ -310,6 +312,49 @@ def prepare_news_graph(cfg, mode='train'):
         print(f"[{mode}] Finish nltk News Graph Construction, \nGraph Path: {nltk_target_path}\nGraph Info: {data}")
 
 
+def prepare_graph_cluster(cfg, mode='train', target='news'):
+    print(f"[{mode}] Start to create graph clusters")
+    data_dir = {"train": cfg.dataset.train_dir, "val": cfg.dataset.val_dir, "test": cfg.dataset.test_dir}
+    clusters_path = Path(data_dir[mode]) / f"{target}_clusters.bin"
+    reprocess_flag = False
+    for file_path in [clusters_path]:
+        if file_path.exists() is False:
+            reprocess_flag = True
+    if (reprocess_flag == False) and (cfg.reprocess == False) and (cfg.reprocess_clusters == False):
+        print(f"[{mode}] All {target} clusters dict exist !")
+        return
+
+    if target == 'news':
+        target_graph_path = Path(data_dir[mode]) / "nltk_news_graph.pt"
+        target_dict = pickle.load(open(Path(data_dir[mode]) / "news_dict.bin", "rb"))
+        graph_data = torch.load(target_graph_path)
+
+    elif target == 'entity':
+        target_graph_path = Path(data_dir[mode]) / "entity_graph.pt"
+        target_dict = pickle.load(open(Path(data_dir[mode]) / "entity_dict.bin", "rb"))
+        graph_data = torch.load(target_graph_path)
+    else:
+        assert False, f"[{mode}] Wrong target {target} "
+    node2vec = Node2Vec(graph_data.edge_index, embedding_dim=128, walk_length=10, context_size=5, walks_per_node=10)
+    embeddings = node2vec(torch.arange(graph_data.num_nodes))
+    embeddings = embeddings.detach().cpu().numpy()
+
+    # Perform KMeans clustering
+    kmeans = KMeans(n_clusters=10)
+    news_cluster = kmeans.fit_predict(embeddings)
+
+    # Group nodes by cluster
+    clusters = {}
+    for i, cluster_id in enumerate(news_cluster):
+        if cluster_id not in clusters:
+            clusters[cluster_id] = []
+        clusters[cluster_id].append(i)
+
+    pickle.dump(clusters, open(clusters_path, "wb"))
+    print(f"[{mode}] Finish {target} Clusters dict \nDict Path: {clusters_path}")
+
+
+
 def prepare_neighbor_list(cfg, mode='train', target='news'):
     #--------------------------------Neighbors List-------------------------------------------
     print(f"[{mode}] Start to process neighbors list")
@@ -432,29 +477,37 @@ def prepare_entity_graph(cfg, mode='train'):
 
 
 def prepare_preprocessed_data(cfg):
-    prepare_distributed_data(cfg, "train")
-    prepare_distributed_data(cfg, "val")
-    prepare_distributed_data(cfg, "test")
-    #
-    prepare_preprocess_bin(cfg, "train")
-    prepare_preprocess_bin(cfg, "val")
-    prepare_preprocess_bin(cfg, "test")
+    # prepare_distributed_data(cfg, "train")
+    # prepare_distributed_data(cfg, "val")
+    # prepare_distributed_data(cfg, "test")
     # #
-    prepare_news_graph(cfg, 'train')
-    prepare_news_graph(cfg, 'val')
-    prepare_news_graph(cfg, 'test')
+    # prepare_preprocess_bin(cfg, "train")
+    # prepare_preprocess_bin(cfg, "val")
+    # prepare_preprocess_bin(cfg, "test")
+    # # #
+    # prepare_news_graph(cfg, 'train')
+    # prepare_news_graph(cfg, 'val')
+    # prepare_news_graph(cfg, 'test')
+    # # #
+    # prepare_neighbor_list(cfg, 'train', 'news')
+    # prepare_neighbor_list(cfg, 'val', 'news')
+    # prepare_neighbor_list(cfg, 'test', 'news')
     # #
-    prepare_neighbor_list(cfg, 'train', 'news')
-    prepare_neighbor_list(cfg, 'val', 'news')
-    prepare_neighbor_list(cfg, 'test', 'news')
+    # prepare_entity_graph(cfg, 'train')
+    # prepare_entity_graph(cfg, 'val')
+    # prepare_entity_graph(cfg, 'test')
+    # #
+    # prepare_neighbor_list(cfg, 'train', 'entity')
+    # prepare_neighbor_list(cfg, 'val', 'entity')
+    # prepare_neighbor_list(cfg, 'test', 'entity')
+
+    prepare_graph_cluster(cfg, 'train', 'news')
+    # prepare_graph_cluster(cfg, 'val', 'news')
+    # prepare_graph_cluster(cfg, 'test', 'news')
     #
-    prepare_entity_graph(cfg, 'train')
-    prepare_entity_graph(cfg, 'val')
-    prepare_entity_graph(cfg, 'test')
-    #
-    prepare_neighbor_list(cfg, 'train', 'entity')
-    prepare_neighbor_list(cfg, 'val', 'entity')
-    prepare_neighbor_list(cfg, 'test', 'entity')
+    # prepare_graph_cluster(cfg, 'train', 'entity')
+    # prepare_graph_cluster(cfg, 'val', 'entity')
+    # prepare_graph_cluster(cfg, 'test', 'entity')
     #
     # Entity vec process
     data_dir = {"train":cfg.dataset.train_dir, "val":cfg.dataset.val_dir, "test":cfg.dataset.test_dir}

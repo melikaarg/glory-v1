@@ -175,6 +175,155 @@ class TrainGraphDataset(TrainDataset):
                     f.seek(0)
 
 
+class TrainGraphDatasetWithClustering(TrainDataset):
+    def __init__(self, filename, news_index, news_input, local_rank, cfg, neighbor_dict, news_graph, entity_neighbors, clusters):
+        super().__init__(filename, news_index, news_input, local_rank, cfg)
+        self.neighbor_dict = neighbor_dict
+        self.news_graph = news_graph.to(local_rank, non_blocking=True)
+
+        self.batch_size = cfg.batch_size / cfg.gpu_num
+        self.entity_neighbors = entity_neighbors
+        self.clusters = clusters
+
+    def line_mapper(self, line, sum_num_news):
+        line = line.strip().split('\t')
+        click_id = line[3].split()[-self.cfg.model.his_size:]
+        sess_pos = line[4].split()
+        sess_neg = line[5].split()
+
+        # ------------------ Clicked News ----------------------
+        # Convert clicked news to indices
+        click_idx = self.trans_to_nindex(click_id)
+
+        # Get the cluster ID of the first clicked news article
+        cluster_id = None
+        for idx in click_idx:
+            for cluster, nodes in self.clusters.items():
+                if idx in nodes:
+                    cluster_id = cluster
+                    break
+            if cluster_id is not None:
+                break
+
+        # If no cluster is found for the clicked news, handle as a special case (e.g., skip or assign default cluster)
+        if cluster_id is None:
+            # Handle cases where clicked news is not in any cluster
+            pass
+
+        # Get only neighbors within the same cluster
+        top_k = len(click_id)
+        source_idx = click_idx
+        for _ in range(self.cfg.model.k_hops):
+            current_hop_idx = []
+            for news_idx in source_idx:
+                # Filter neighbors by cluster
+                neighbors_in_cluster = [n for n in self.neighbor_dict[news_idx] if n in self.clusters[cluster_id]]
+                current_hop_idx.extend(neighbors_in_cluster[:self.cfg.model.num_neighbors])
+            source_idx = current_hop_idx
+            click_idx.extend(current_hop_idx)
+
+        # Build the subgraph using the filtered click_idx within the same cluster
+        sub_news_graph, mapping_idx = self.build_subgraph(click_idx, top_k, sum_num_news)
+        padded_maping_idx = F.pad(mapping_idx, (self.cfg.model.his_size - len(mapping_idx), 0), "constant", -1)
+
+        # ------------------ Candidate News ---------------------
+        label = 0
+        sample_news = self.trans_to_nindex(sess_pos + sess_neg)
+        candidate_input = self.news_input[sample_news]
+
+        # ------------------ Entity Subgraph --------------------
+        if self.cfg.model.use_entity:
+            origin_entity = candidate_input[:, -3 - self.cfg.model.entity_size:-3]
+            candidate_neighbor_entity = np.zeros(
+                ((self.cfg.npratio + 1) * self.cfg.model.entity_size, self.cfg.model.entity_neighbors), dtype=np.int64)
+            for cnt, idx in enumerate(origin_entity.flatten()):
+                if idx == 0:
+                    continue
+                entity_dict_length = len(self.entity_neighbors[idx])
+                if entity_dict_length == 0:
+                    continue
+                valid_len = min(entity_dict_length, self.cfg.model.entity_neighbors)
+                candidate_neighbor_entity[cnt, :valid_len] = self.entity_neighbors[idx][:valid_len]
+
+            candidate_neighbor_entity = candidate_neighbor_entity.reshape(self.cfg.npratio + 1,
+                                                                          self.cfg.model.entity_size * self.cfg.model.entity_neighbors)
+            entity_mask = candidate_neighbor_entity.copy()
+            entity_mask[entity_mask > 0] = 1
+            candidate_entity = np.concatenate((origin_entity, candidate_neighbor_entity), axis=-1)
+        else:
+            candidate_entity = np.zeros(1)
+            entity_mask = np.zeros(1)
+
+        return sub_news_graph, padded_maping_idx, candidate_input, candidate_entity, entity_mask, label, \
+            sum_num_news + sub_news_graph.num_nodes
+    def build_subgraph(self, subset, k, sum_num_nodes):
+        device = self.news_graph.x.device
+
+        if not subset:
+            subset = [0]
+
+        subset = torch.tensor(subset, dtype=torch.long, device=device)
+
+        unique_subset, unique_mapping = torch.unique(subset, sorted=True, return_inverse=True)
+        subemb = self.news_graph.x[unique_subset]
+
+        sub_edge_index, sub_edge_attr = subgraph(unique_subset, self.news_graph.edge_index, self.news_graph.edge_attr,
+                                                 relabel_nodes=True, num_nodes=self.news_graph.num_nodes)
+
+        sub_news_graph = Data(x=subemb, edge_index=sub_edge_index, edge_attr=sub_edge_attr)
+
+        return sub_news_graph, unique_mapping[:k] + sum_num_nodes
+
+    def __iter__(self):
+        while True:
+            clicked_graphs = []
+            candidates = []
+            mappings = []
+            labels = []
+
+            candidate_entity_list = []
+            entity_mask_list = []
+            sum_num_news = 0
+            with open(self.filename) as f:
+                for line in f:
+                    # if line.strip().split('\t')[3]:
+                    sub_newsgraph, padded_mapping_idx, candidate_input, candidate_entity, entity_mask, label, sum_num_news = self.line_mapper(
+                        line, sum_num_news)
+
+                    clicked_graphs.append(sub_newsgraph)
+                    candidates.append(torch.from_numpy(candidate_input))
+                    mappings.append(padded_mapping_idx)
+                    labels.append(label)
+
+                    candidate_entity_list.append(torch.from_numpy(candidate_entity))
+                    entity_mask_list.append(torch.from_numpy(entity_mask))
+
+                    if len(clicked_graphs) == self.batch_size:
+                        batch = Batch.from_data_list(clicked_graphs)
+
+                        candidates = torch.stack(candidates)
+                        mappings = torch.stack(mappings)
+                        candidate_entity_list = torch.stack(candidate_entity_list)
+                        entity_mask_list = torch.stack(entity_mask_list)
+
+                        labels = torch.tensor(labels, dtype=torch.long)
+                        yield batch, mappings, candidates, candidate_entity_list, entity_mask_list, labels
+                        clicked_graphs, mappings, candidates, labels, candidate_entity_list, entity_mask_list = [], [], [], [], [], []
+                        sum_num_news = 0
+
+                if (len(clicked_graphs) > 0):
+                    batch = Batch.from_data_list(clicked_graphs)
+
+                    candidates = torch.stack(candidates)
+                    mappings = torch.stack(mappings)
+                    candidate_entity_list = torch.stack(candidate_entity_list)
+                    entity_mask_list = torch.stack(entity_mask_list)
+                    labels = torch.tensor(labels, dtype=torch.long)
+
+                    yield batch, mappings, candidates, candidate_entity_list, entity_mask_list, labels
+                    f.seek(0)
+
+
 class ValidGraphDataset(TrainGraphDataset):
     def __init__(self, filename, news_index, news_input, local_rank, cfg, neighbor_dict, news_graph, entity_neighbors, news_entity):
         super().__init__(filename, news_index, news_input, local_rank, cfg, neighbor_dict, news_graph, entity_neighbors)
