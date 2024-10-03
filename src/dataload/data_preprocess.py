@@ -335,7 +335,7 @@ def prepare_graph_cluster(cfg, mode='train', target='news'):
         graph_data = torch.load(target_graph_path)
     else:
         assert False, f"[{mode}] Wrong target {target} "
-    node2vec = Node2Vec(graph_data.edge_index, embedding_dim=128, walk_length=10, context_size=5, walks_per_node=10)
+    node2vec = Node2Vec(graph_data.edge_index, embedding_dim=128, walk_length=10, context_size=5, walks_per_node=10, num_nodes=graph_data.num_nodes)
     embeddings = node2vec(torch.arange(graph_data.num_nodes))
     embeddings = embeddings.detach().cpu().numpy()
 
@@ -502,8 +502,8 @@ def prepare_preprocessed_data(cfg):
     # prepare_neighbor_list(cfg, 'test', 'entity')
 
     prepare_graph_cluster(cfg, 'train', 'news')
-    # prepare_graph_cluster(cfg, 'val', 'news')
-    # prepare_graph_cluster(cfg, 'test', 'news')
+    prepare_graph_cluster(cfg, 'val', 'news')
+    prepare_graph_cluster(cfg, 'test', 'news')
     #
     # prepare_graph_cluster(cfg, 'train', 'entity')
     # prepare_graph_cluster(cfg, 'val', 'entity')

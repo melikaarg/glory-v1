@@ -39,7 +39,7 @@ def load_data(cfg, mode='train', model=None, local_rank=0):
             else:
                 entity_neighbors = None
 
-            dataset = TrainGraphDatasetWithClustering(
+            dataset = TrainGraphDatasetWithFirstClustering(
                 filename=target_file,
                 news_index=news_index,
                 news_input=news_input,
@@ -97,6 +97,7 @@ def load_data(cfg, mode='train', model=None, local_rank=0):
             news_graph = torch.load(Path(data_dir[mode]) / "nltk_news_graph.pt")
 
             news_neighbors_dict = pickle.load(open(Path(data_dir[mode]) / "news_neighbor_dict.bin", "rb"))
+            news_clusters_dict = pickle.load(open(Path(data_dir[mode]) / "news_clusters.bin", "rb"))
 
             if cfg.model.directed is False:
                 news_graph.edge_index, news_graph.edge_attr = to_undirected(news_graph.edge_index, news_graph.edge_attr)
@@ -111,7 +112,7 @@ def load_data(cfg, mode='train', model=None, local_rank=0):
                 entity_neighbors = None
 
             if mode == 'val' or mode == 'test':
-                dataset = ValidGraphDataset(
+                dataset = ValidGraphFirstClusterDataset(
                     # filename=Path(data_dir[mode]) / f"behaviors_np{cfg.npratio}_{local_rank}.tsv",
                     filename=Path(data_dir[mode]) / f"behaviors_np{cfg.npratio}_0.tsv",
                     news_index=news_index,
@@ -121,7 +122,8 @@ def load_data(cfg, mode='train', model=None, local_rank=0):
                     neighbor_dict=news_neighbors_dict,
                     news_graph=news_graph,
                     news_entity=news_input[:,-8:-3],
-                    entity_neighbors=entity_neighbors
+                    entity_neighbors=entity_neighbors,
+                    clusters=news_clusters_dict
                 )
 
             dataloader = DataLoader(dataset, batch_size=None)
