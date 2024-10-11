@@ -10,6 +10,7 @@ import pickle
 
 from dataload.dataset import *
 
+
 def load_data(cfg, mode='train', model=None, local_rank=0):
     data_dir = {"train": cfg.dataset.train_dir, "val": cfg.dataset.val_dir, "test": cfg.dataset.test_dir}
 
@@ -28,7 +29,6 @@ def load_data(cfg, mode='train', model=None, local_rank=0):
                 news_graph.edge_index, news_graph.edge_attr = to_undirected(news_graph.edge_index, news_graph.edge_attr)
             print(f"[{mode}] News Graph Info: {news_graph}")
 
-
             news_neighbors_dict = pickle.load(open(Path(data_dir[mode]) / "news_neighbor_dict.bin", "rb"))
             news_clusters_dict = pickle.load(open(Path(data_dir[mode]) / "news_clusters.bin", "rb"))
 
@@ -39,7 +39,7 @@ def load_data(cfg, mode='train', model=None, local_rank=0):
             else:
                 entity_neighbors = None
 
-            dataset = TrainGraphDatasetWithFirstClustering(
+            dataset = TrainGraphDatasetClusterIds(
                 filename=target_file,
                 news_index=news_index,
                 news_input=news_input,
@@ -48,9 +48,9 @@ def load_data(cfg, mode='train', model=None, local_rank=0):
                 neighbor_dict=news_neighbors_dict,
                 news_graph=news_graph,
                 entity_neighbors=entity_neighbors,
-                clusters=news_clusters_dict
+                clusters=news_clusters_dict,
+                cluster_ids=[1, 2, 3, 4, 5]
             )
-
             # dataset = TrainGraphDataset(
             #     filename=target_file,
             #     news_index=news_index,
@@ -61,8 +61,7 @@ def load_data(cfg, mode='train', model=None, local_rank=0):
             #     news_graph=news_graph,
             #     entity_neighbors=entity_neighbors,
             # )
-            dataloader = DataLoader(dataset, batch_size=None)
-            
+            dataloader = DataLoader(dataset, batch_size=None, num_workers=5, pin_memory=True, prefetch_factor=2)
         else:
             dataset = TrainDataset(
                 filename=target_file,
@@ -87,11 +86,13 @@ def load_data(cfg, mode='train', model=None, local_rank=0):
         with torch.no_grad():
             for news_batch in tqdm(news_dataloader, desc=f"[{local_rank}] Processing validation News Embedding"):
                 if cfg.model.use_graph:
-                    batch_emb = model.module.local_news_encoder(news_batch.long().unsqueeze(0).to(local_rank)).squeeze(0).detach()
+                    batch_emb = model.module.local_news_encoder(news_batch.long().unsqueeze(0).to(local_rank)).squeeze(
+                        0).detach()
                 else:
-                    batch_emb = model.module.local_news_encoder(news_batch.long().unsqueeze(0).to(local_rank)).squeeze(0).detach()
+                    batch_emb = model.module.local_news_encoder(news_batch.long().unsqueeze(0).to(local_rank)).squeeze(
+                        0).detach()
                 stacked_news.append(batch_emb)
-        news_emb = torch.cat(stacked_news, dim=0).cpu().numpy()   
+        news_emb = torch.cat(stacked_news, dim=0).cpu().numpy()
 
         if cfg.model.use_graph:
             news_graph = torch.load(Path(data_dir[mode]) / "nltk_news_graph.pt")
@@ -112,7 +113,7 @@ def load_data(cfg, mode='train', model=None, local_rank=0):
                 entity_neighbors = None
 
             if mode == 'val' or mode == 'test':
-                dataset = ValidGraphFirstClusterDataset(
+                dataset = ValidGraphClusterIdsDataset(
                     # filename=Path(data_dir[mode]) / f"behaviors_np{cfg.npratio}_{local_rank}.tsv",
                     filename=Path(data_dir[mode]) / f"behaviors_np{cfg.npratio}_0.tsv",
                     news_index=news_index,
@@ -121,12 +122,13 @@ def load_data(cfg, mode='train', model=None, local_rank=0):
                     cfg=cfg,
                     neighbor_dict=news_neighbors_dict,
                     news_graph=news_graph,
-                    news_entity=news_input[:,-8:-3],
+                    news_entity=news_input[:, -8:-3],
                     entity_neighbors=entity_neighbors,
-                    clusters=news_clusters_dict
+                    clusters=news_clusters_dict,
+                    cluster_ids=[1, 2, 3, 4, 5]
                 )
 
-            dataloader = DataLoader(dataset, batch_size=None)
+            dataloader = DataLoader(dataset, batch_size=None, num_workers=5, pin_memory=True, prefetch_factor=2)
 
         else:
             if mode == 'val':

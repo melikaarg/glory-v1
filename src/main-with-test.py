@@ -101,19 +101,25 @@ def train_cpu(model, optimizer, scheduler, dataloader, local_rank, cfg, early_st
     sum_loss = torch.zeros(1)
     sum_auc = torch.zeros(1)
 
-    for cnt, (subgraph, mapping_idx, candidate_news, candidate_entity, entity_mask, labels) in enumerate(
+    for cnt, (subgraphs, mapping_idx_list, candidate_news, candidate_entity, entity_mask, labels) in enumerate(
             tqdm(dataloader, total=int(cfg.num_epochs * (cfg.dataset.pos_count // cfg.batch_size + 1)),
                  desc=f"[{local_rank}] Training"), start=1):
-        subgraph = subgraph.to(local_rank, non_blocking=True)
-        mapping_idx = mapping_idx.to(local_rank, non_blocking=True)
+
+        subgraphs = [sg[1].to(local_rank, non_blocking=True) for sg in subgraphs]
+        mapping = []
+        for i in range(len(mapping_idx_list)):
+            mapping.append(torch.stack(mapping_idx_list[i]).to(local_rank, non_blocking=True))
+
+        # mapping_idx_list = [torch.stack(m_idx[i]).to(local_rank, non_blocking=True) for i, m_idx in enumerate(mapping_idx_list)]
+
+        # mapping_idx_list = mapping_idx_list.to(local_rank, non_blocking=True)
         candidate_news = candidate_news.to(local_rank, non_blocking=True)
         labels = labels.to(local_rank, non_blocking=True)
         candidate_entity = candidate_entity.to(local_rank, non_blocking=True)
         entity_mask = entity_mask.to(local_rank, non_blocking=True)
 
         # Forward pass
-        bz_loss, y_hat = model(subgraph, mapping_idx, candidate_news, candidate_entity, entity_mask, labels)
-
+        bz_loss, y_hat = model(subgraphs, mapping, candidate_news, candidate_entity, entity_mask, labels)
         # Accumulate the gradients
         bz_loss.backward()
         if cnt % cfg.accumulation_steps == 0 or cnt == int(cfg.dataset.pos_count / cfg.batch_size):

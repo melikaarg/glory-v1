@@ -57,31 +57,43 @@ class GLORY(nn.Module):
         self.loss_fn = NCELoss()
 
 
-    def forward(self, subgraph, mapping_idx, candidate_news, candidate_entity, entity_mask, label=None):
-        # -------------------------------------- clicked ----------------------------------
-        mask = mapping_idx != -1
-        mapping_idx[mapping_idx == -1] = 0
+    def forward(self, subgraphs, mapping_idx_list, candidate_news, candidate_entity, entity_mask, label=None):
+        user_embs = []
+        for i, subgraph in enumerate(subgraphs):
+            # -------------------------------------- clicked ----------------------------------
+            mask = mapping_idx_list[i] != -1
+            mapping_idx_list[i][mapping_idx_list[i] == -1] = 0
 
-        batch_size, num_clicked, token_dim = mapping_idx.shape[0], mapping_idx.shape[1], candidate_news.shape[-1]
-        clicked_entity = subgraph.x[mapping_idx, -8:-3]
+            batch_size, num_clicked, token_dim = mapping_idx_list[i].shape[0], mapping_idx_list[i].shape[1], candidate_news.shape[-1]
+            clicked_entity = subgraph.x[mapping_idx_list[i], -8:-3]
 
-        # News Encoder + GCN
-        x_flatten = subgraph.x.view(1, -1, token_dim)
-        x_encoded = self.local_news_encoder(x_flatten).view(-1, self.news_dim)
+            # News Encoder + GCN for this subgraph
+            x_flatten = subgraph.x.view(1, -1, token_dim)
+            x_encoded = self.local_news_encoder(x_flatten).view(-1, self.news_dim)
 
-        graph_emb = self.global_news_encoder(x_encoded, subgraph.edge_index)
+            graph_emb = self.global_news_encoder(x_encoded, subgraph.edge_index)
 
-        clicked_origin_emb = x_encoded[mapping_idx, :].masked_fill(~mask.unsqueeze(-1), 0).view(batch_size, num_clicked, self.news_dim)
-        clicked_graph_emb = graph_emb[mapping_idx, :].masked_fill(~mask.unsqueeze(-1), 0).view(batch_size, num_clicked, self.news_dim)
+            clicked_origin_emb = x_encoded[mapping_idx_list[i], :].masked_fill(~mask.unsqueeze(-1), 0).view(batch_size,
+                                                                                                            num_clicked,
+                                                                                                            self.news_dim)
+            clicked_graph_emb = graph_emb[mapping_idx_list[i], :].masked_fill(~mask.unsqueeze(-1), 0).view(batch_size,
+                                                                                                           num_clicked,
+                                                                                                           self.news_dim)
 
-        # Attention pooling
-        if self.use_entity:
-            clicked_entity = self.local_entity_encoder(clicked_entity, None)
-        else:
-            clicked_entity = None
+            # Attention pooling for this subgraph
+            if self.use_entity:
+                clicked_entity = self.local_entity_encoder(clicked_entity, None)
+            else:
+                clicked_entity = None
 
-        clicked_total_emb = self.click_encoder(clicked_origin_emb, clicked_graph_emb, clicked_entity)
-        user_emb = self.user_encoder(clicked_total_emb, mask)
+            clicked_total_emb = self.click_encoder(clicked_origin_emb, clicked_graph_emb, clicked_entity)
+            user_emb = self.user_encoder(clicked_total_emb, mask)
+
+            # Collect user embeddings from this subgraph
+            user_embs.append(user_emb)
+
+            # Aggregate user embeddings from all subgraphs (clusters)
+        user_emb = torch.mean(torch.stack(user_embs), dim=0)  # You can also try torch.cat() or other aggregation strategies
 
         # ----------------------------------------- Candidate------------------------------------
         cand_title_emb = self.local_news_encoder(candidate_news)                                      # [8, 5, 400]
