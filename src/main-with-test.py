@@ -167,16 +167,23 @@ def val(model, local_rank, cfg):
     dataloader = load_data(cfg, mode='val', model=model, local_rank=local_rank)
     tasks = []
     with torch.no_grad():
-        for cnt, (subgraph, mappings, clicked_entity, candidate_input, candidate_entity, entity_mask, labels) \
+        for cnt, (subgraphs, mapping_idx_list, clicked_entity, candidate_input, candidate_entity, entity_mask, labels) \
                 in enumerate(tqdm(dataloader,
                                   total=int(cfg.dataset.val_len / cfg.gpu_num),
                                   desc=f"[{local_rank}] Validating")):
+            subgraphs = [sg[1].to(local_rank, non_blocking=True) for sg in subgraphs]
+            mappings = []
+            for i in range(len(mapping_idx_list)):
+                mappings.append(torch.stack(mapping_idx_list[i]).to(local_rank, non_blocking=True))
+
+            clicked_entity = torch.tensor(clicked_entity)
+
             candidate_emb = torch.FloatTensor(np.array(candidate_input)).to(local_rank, non_blocking=True)
             candidate_entity = candidate_entity.to(local_rank, non_blocking=True)
             entity_mask = entity_mask.to(local_rank, non_blocking=True)
             clicked_entity = clicked_entity.to(local_rank, non_blocking=True)
 
-            scores = model.module.validation_process(subgraph, mappings, clicked_entity, candidate_emb,
+            scores = model.module.validation_process(subgraphs, mappings, clicked_entity, candidate_emb,
                                                      candidate_entity, entity_mask)
 
             tasks.append((labels.tolist(), scores))
