@@ -30,7 +30,7 @@ def load_data(cfg, mode='train', model=None, local_rank=0):
             print(f"[{mode}] News Graph Info: {news_graph}")
 
             news_neighbors_dict = pickle.load(open(Path(data_dir[mode]) / "news_neighbor_dict.bin", "rb"))
-            news_clusters_dict = pickle.load(open(Path(data_dir[mode]) / "news_clusters.bin", "rb"))
+            news_clusters_dict = pickle.load(open(Path(data_dir[mode]) / "news_clusters_leiden.bin", "rb"))
 
             if cfg.model.use_entity:
                 entity_neighbors = pickle.load(open(Path(data_dir[mode]) / "entity_neighbor_dict.bin", "rb"))
@@ -49,7 +49,7 @@ def load_data(cfg, mode='train', model=None, local_rank=0):
                 news_graph=news_graph,
                 entity_neighbors=entity_neighbors,
                 clusters=news_clusters_dict,
-                cluster_ids=[1, 2, 3, 4, 5]
+                cluster_ids=news_clusters_dict.keys()
             )
             # dataset = TrainGraphDataset(
             #     filename=target_file,
@@ -98,7 +98,7 @@ def load_data(cfg, mode='train', model=None, local_rank=0):
             news_graph = torch.load(Path(data_dir[mode]) / "nltk_news_graph.pt")
 
             news_neighbors_dict = pickle.load(open(Path(data_dir[mode]) / "news_neighbor_dict.bin", "rb"))
-            news_clusters_dict = pickle.load(open(Path(data_dir[mode]) / "news_clusters.bin", "rb"))
+            news_clusters_dict = pickle.load(open(Path(data_dir[mode]) / "news_clusters_leiden.bin", "rb"))
 
             if cfg.model.directed is False:
                 news_graph.edge_index, news_graph.edge_attr = to_undirected(news_graph.edge_index, news_graph.edge_attr)
@@ -125,7 +125,7 @@ def load_data(cfg, mode='train', model=None, local_rank=0):
                     news_entity=news_input[:, -8:-3],
                     entity_neighbors=entity_neighbors,
                     clusters=news_clusters_dict,
-                    cluster_ids=[1, 2, 3, 4, 5]
+                    cluster_ids=news_clusters_dict
                 )
 
             dataloader = DataLoader(dataset, batch_size=None, num_workers=5, pin_memory=True, prefetch_factor=2)

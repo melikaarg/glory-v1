@@ -200,8 +200,8 @@ class GLORY(nn.Module):
 
             # Aggregate user embeddings from all subgraphs (clusters)
         # user_emb = torch.mean(torch.stack(user_embs),dim=0)
-        # user_emb = torch.max(torch.stack(user_embs), dim=0)[0]
-        user_emb = sum(1 * emb for emb in user_embs)# You can also try torch.cat() or other aggregation strategies
+        user_emb = torch.max(torch.stack(user_embs), dim=0)[0]
+        # user_emb = sum(1 * emb for emb in user_embs)# You can also try torch.cat() or other aggregation strategies
 
         # ----------------------------------------- Candidate------------------------------------
         cand_title_emb = self.local_news_encoder(candidate_news)  # [8, 5, 400]
@@ -246,8 +246,8 @@ class GLORY(nn.Module):
             user_emb_i = self.user_encoder(clicked_final_emb)  # [1, 400]
             user_embs.append(user_emb_i)
         # user_emb = torch.mean(torch.stack(user_embs), dim=0)
-        # user_emb = torch.max(torch.stack(user_embs), dim=0)[0]
-        user_emb = sum(1 * emb for emb in user_embs)
+        user_emb = torch.max(torch.stack(user_embs), dim=0)[0]
+        # user_emb = sum(1 * emb for emb in user_embs)
         # ----------------------------------------- Candidate------------------------------------
 
         if self.use_entity:

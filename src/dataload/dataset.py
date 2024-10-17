@@ -619,7 +619,7 @@ class TrainGraphDatasetClusterIds(TrainDataset):
         self.batch_size = cfg.batch_size / cfg.gpu_num
         self.entity_neighbors = entity_neighbors
         self.clusters = clusters
-        self.cluster_ids = [0,1,2,3,4]
+        self.cluster_ids = cluster_ids
 
     def line_mapper(self, line, sum_num_news):
         line = line.strip().split('\t')
@@ -1090,7 +1090,7 @@ class ValidGraphClusterIdsDataset(TrainGraphDataset):
         super().__init__(filename, news_index, news_input, local_rank, cfg, neighbor_dict, news_graph, entity_neighbors)
         self.news_graph.x = torch.from_numpy(self.news_input).to(local_rank, non_blocking=True)
         self.news_entity = news_entity
-        self.cluster_ids = [0, 1, 2, 3, 4]  # Using cluster IDs 0-4 to match training class
+        self.cluster_ids = cluster_ids# Using cluster IDs 0-4 to match training class
         self.clusters = clusters
 
     def line_mapper(self, line):
