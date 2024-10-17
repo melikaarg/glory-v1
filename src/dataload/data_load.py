@@ -30,7 +30,7 @@ def load_data(cfg, mode='train', model=None, local_rank=0):
 
 
             news_neighbors_dict = pickle.load(open(Path(data_dir[mode]) / "news_neighbor_dict.bin", "rb"))
-            news_clusters_dict = pickle.load(open(Path(data_dir[mode]) / "news_clusters.bin", "rb"))
+            news_clusters_dict = pickle.load(open(Path(data_dir[mode]) / "news_clusters_leiden.bin", "rb"))
 
             if cfg.model.use_entity:
                 entity_neighbors = pickle.load(open(Path(data_dir[mode]) / "entity_neighbor_dict.bin", "rb"))
@@ -97,7 +97,7 @@ def load_data(cfg, mode='train', model=None, local_rank=0):
             news_graph = torch.load(Path(data_dir[mode]) / "nltk_news_graph.pt")
 
             news_neighbors_dict = pickle.load(open(Path(data_dir[mode]) / "news_neighbor_dict.bin", "rb"))
-            news_clusters_dict = pickle.load(open(Path(data_dir[mode]) / "news_clusters.bin", "rb"))
+            news_clusters_dict = pickle.load(open(Path(data_dir[mode]) / "news_clusters_leiden.bin", "rb"))
 
             if cfg.model.directed is False:
                 news_graph.edge_index, news_graph.edge_attr = to_undirected(news_graph.edge_index, news_graph.edge_attr)

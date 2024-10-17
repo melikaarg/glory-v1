@@ -6,6 +6,8 @@ from sklearn.cluster import KMeans
 from torch_geometric.data import Data
 from torch_geometric.nn import Node2Vec
 from torch_geometric.utils import to_undirected
+import igraph as ig
+import leidenalg  # The Leiden algorithm for modularity-based clustering
 
 import torch.nn.functional as F
 from tqdm import tqdm
@@ -353,7 +355,50 @@ def prepare_graph_cluster(cfg, mode='train', target='news'):
     pickle.dump(clusters, open(clusters_path, "wb"))
     print(f"[{mode}] Finish {target} Clusters dict \nDict Path: {clusters_path}")
 
+def prepare_graph_cluster_leidenalg(cfg, mode='train', target='news'):
+    print(f"[{mode}] Start to create graph clusters")
+    data_dir = {"train": cfg.dataset.train_dir, "val": cfg.dataset.val_dir, "test": cfg.dataset.test_dir}
+    clusters_path = Path(data_dir[mode]) / f"{target}_clusters_leiden.bin"
+    reprocess_flag = False
+    for file_path in [clusters_path]:
+        if file_path.exists() is False:
+            reprocess_flag = True
+    if not reprocess_flag and not cfg.reprocess and not cfg.reprocess_clusters:
+        print(f"[{mode}] All {target} clusters dict exist!")
+        return
 
+    # Load the target graph data based on the specified target
+    if target == 'news':
+        target_graph_path = Path(data_dir[mode]) / "nltk_news_graph.pt"
+        target_dict = pickle.load(open(Path(data_dir[mode]) / "news_dict.bin", "rb"))
+        graph_data = torch.load(target_graph_path)
+
+    elif target == 'entity':
+        target_graph_path = Path(data_dir[mode]) / "entity_graph.pt"
+        target_dict = pickle.load(open(Path(data_dir[mode]) / "entity_dict.bin", "rb"))
+        graph_data = torch.load(target_graph_path)
+    else:
+        raise ValueError(f"[{mode}] Wrong target {target}")
+
+    # Convert graph_data to igraph format
+    edge_index = graph_data.edge_index.cpu().numpy()
+    G = ig.Graph(edges=edge_index.T.tolist(), directed=False)
+
+    # Perform modularity-based clustering using the Leiden algorithm
+    print(f"[{mode}] Performing Leiden clustering for modularity optimization...")
+    partition = leidenalg.find_partition(G, leidenalg.ModularityVertexPartition)
+
+    # Organize nodes by their cluster IDs
+    clusters_dict = {}
+    for node_id, cluster_id in enumerate(partition.membership):
+        cluster_key = str(cluster_id)  # Convert cluster ID to a string
+        clusters_dict.setdefault(cluster_key, []).append(node_id)
+
+    # Save the cluster assignments as a dictionary
+    with open(clusters_path, "wb") as f:
+        pickle.dump(clusters_dict, f)
+
+    print(f"[{mode}] Finished creating modularity-based clusters for {target}")
 
 def prepare_neighbor_list(cfg, mode='train', target='news'):
     #--------------------------------Neighbors List-------------------------------------------
@@ -501,9 +546,11 @@ def prepare_preprocessed_data(cfg):
     # prepare_neighbor_list(cfg, 'val', 'entity')
     # prepare_neighbor_list(cfg, 'test', 'entity')
 
-    prepare_graph_cluster(cfg, 'train', 'news')
-    prepare_graph_cluster(cfg, 'val', 'news')
-    prepare_graph_cluster(cfg, 'test', 'news')
+    prepare_graph_cluster_leidenalg(cfg, 'train', 'news')
+    prepare_graph_cluster_leidenalg(cfg, 'val', 'news')
+    prepare_graph_cluster_leidenalg(cfg, 'test', 'news')
+    # prepare_graph_cluster(cfg, 'val', 'news')
+    # prepare_graph_cluster(cfg, 'test', 'news')
     #
     # prepare_graph_cluster(cfg, 'train', 'entity')
     # prepare_graph_cluster(cfg, 'val', 'entity')
