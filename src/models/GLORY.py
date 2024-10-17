@@ -199,8 +199,9 @@ class GLORY(nn.Module):
             user_embs.append(user_emb)
 
             # Aggregate user embeddings from all subgraphs (clusters)
-        user_emb = torch.mean(torch.stack(user_embs),
-                              dim=0)  # You can also try torch.cat() or other aggregation strategies
+        # user_emb = torch.mean(torch.stack(user_embs),dim=0)
+        # user_emb = torch.max(torch.stack(user_embs), dim=0)[0]
+        user_emb = sum(1 * emb for emb in user_embs)# You can also try torch.cat() or other aggregation strategies
 
         # ----------------------------------------- Candidate------------------------------------
         cand_title_emb = self.local_news_encoder(candidate_news)  # [8, 5, 400]
@@ -223,23 +224,30 @@ class GLORY(nn.Module):
         return loss, score
 
     def validation_process(self, subgraph, mappings, clicked_entity, candidate_emb, candidate_entity, entity_mask):
+        user_embs = []
+        for i in range(0, len(subgraph)):
 
-        batch_size, num_news, news_dim = 1, len(mappings), candidate_emb.shape[-1]
+            batch_size, num_news, news_dim = mappings[i].shape[0], mappings[i].shape[1], candidate_emb.shape[-1]
 
-        title_graph_emb = self.global_news_encoder(subgraph.x, subgraph.edge_index)
-        clicked_graph_emb = title_graph_emb[mappings, :].view(batch_size, num_news, news_dim)
-        clicked_origin_emb = subgraph.x[mappings, :].view(batch_size, num_news, news_dim)
+            title_graph_emb = self.global_news_encoder(subgraph[i].x, subgraph[i].edge_index)
+            # print(title_graph_emb[mappings[i], :].shape)
+            # print("mappings:", mappings[i].shape, candidate_emb.shape)
+            clicked_graph_emb = title_graph_emb[mappings[i], :].view(batch_size, num_news, news_dim)
+            clicked_origin_emb = subgraph[i].x[mappings[i], :].view(batch_size, num_news, news_dim)
 
         # --------------------Attention Pooling
-        if self.use_entity:
-            clicked_entity_emb = self.local_entity_encoder(clicked_entity.unsqueeze(0), None)
-        else:
-            clicked_entity_emb = None
+            if self.use_entity:
+                clicked_entity_emb = self.local_entity_encoder(clicked_entity.unsqueeze(0), None)
+            else:
+                clicked_entity_emb = None
 
-        clicked_final_emb = self.click_encoder(clicked_origin_emb, clicked_graph_emb, clicked_entity_emb)
+            clicked_final_emb = self.click_encoder(clicked_origin_emb, clicked_graph_emb, clicked_entity_emb)
 
-        user_emb = self.user_encoder(clicked_final_emb)  # [1, 400]
-
+            user_emb_i = self.user_encoder(clicked_final_emb)  # [1, 400]
+            user_embs.append(user_emb_i)
+        # user_emb = torch.mean(torch.stack(user_embs), dim=0)
+        # user_emb = torch.max(torch.stack(user_embs), dim=0)[0]
+        user_emb = sum(1 * emb for emb in user_embs)
         # ----------------------------------------- Candidate------------------------------------
 
         if self.use_entity:
@@ -259,6 +267,8 @@ class GLORY(nn.Module):
                                                 cand_neighbor_entity_emb)
         # ---------------------------------------------------------------------------------------
         # ----------------------------------------- Score ------------------------------------
+        # print("cand_final_emb", cand_final_emb.shape)
+        # print("user_emb", user_emb.shape)
         scores = self.click_predictor(cand_final_emb, user_emb).view(-1).cpu().tolist()
 
         return scores

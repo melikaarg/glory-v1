@@ -152,6 +152,7 @@ def train_cpu(model, optimizer, scheduler, dataloader, local_rank, cfg, early_st
             early_stop, get_better = early_stopping(res['auc'])
             if early_stop:
                 print("Early Stop.")
+                pretty_print(res)
                 break
             elif get_better:
                 print(f"Better Result!")
@@ -171,7 +172,7 @@ def val(model, local_rank, cfg):
                 in enumerate(tqdm(dataloader,
                                   total=int(cfg.dataset.val_len / cfg.gpu_num),
                                   desc=f"[{local_rank}] Validating")):
-            subgraphs = [sg[1].to(local_rank, non_blocking=True) for sg in subgraphs]
+            subgraphs = [sg.to(local_rank, non_blocking=True) for sg in subgraphs]
             mappings = []
             for i in range(len(mapping_idx_list)):
                 mappings.append(torch.stack(mapping_idx_list[i]).to(local_rank, non_blocking=True))
@@ -259,13 +260,20 @@ def model_test(model, dataloader, local_rank, cfg):
     model.eval()
     tasks = []
     with torch.no_grad():
-        for cnt, (subgraph, mappings, clicked_entity, candidate_input, candidate_entity, entity_mask, labels) in enumerate(tqdm(dataloader, desc=f"[{local_rank}] Testing")):
+        for cnt, (subgraphs, mapping_idx_list, clicked_entity, candidate_input, candidate_entity, entity_mask, labels) in enumerate(tqdm(dataloader, desc=f"[{local_rank}] Testing")):
+            subgraphs = [sg.to(local_rank, non_blocking=True) for sg in subgraphs]
+            mappings = []
+            for i in range(len(mapping_idx_list)):
+                mappings.append(torch.stack(mapping_idx_list[i]).to(local_rank, non_blocking=True))
+
+            clicked_entity = torch.tensor(clicked_entity)
+
             candidate_emb = torch.FloatTensor(np.array(candidate_input)).to(local_rank, non_blocking=True)
             candidate_entity = candidate_entity.to(local_rank, non_blocking=True)
             entity_mask = entity_mask.to(local_rank, non_blocking=True)
             clicked_entity = clicked_entity.to(local_rank, non_blocking=True)
 
-            scores = model.module.validation_process(subgraph, mappings, clicked_entity, candidate_emb, candidate_entity, entity_mask)
+            scores = model.module.validation_process(subgraphs, mappings, clicked_entity, candidate_emb, candidate_entity, entity_mask)
             tasks.append((labels.tolist(), scores))
 
     with mp.Pool(processes=cfg.num_workers) as pool:

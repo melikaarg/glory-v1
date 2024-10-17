@@ -1174,6 +1174,9 @@ class ValidGraphClusterIdsDataset(TrainGraphDataset):
                 if line.strip().split('\t')[3]:
                     sub_newsgraphs, padded_mapping_idx_list, candidates, candidate_input, candidate_entity, entity_mask, labels = self.line_mapper(
                         line)
+                    mappings = []
+                    clicked_graphs = []  # Will hold lists of mapping indices for each cluster
+
                     clicked_graphs.append(sub_newsgraphs)
 
                     for i in range(len(padded_mapping_idx_list)):

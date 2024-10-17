@@ -501,7 +501,7 @@ def prepare_preprocessed_data(cfg):
     # prepare_neighbor_list(cfg, 'val', 'entity')
     # prepare_neighbor_list(cfg, 'test', 'entity')
 
-    # prepare_graph_cluster(cfg, 'train', 'news')
+    prepare_graph_cluster(cfg, 'train', 'news')
     # prepare_graph_cluster(cfg, 'val', 'news')
     # prepare_graph_cluster(cfg, 'test', 'news')
     # #
