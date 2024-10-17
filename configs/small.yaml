@@ -23,7 +23,7 @@ train_mode: true
 val_mode: true
 
 model:
-  use_entity: true
+  use_entity: false
   entity_neighbors: 10
   head_num: 20
   head_dim: 20
